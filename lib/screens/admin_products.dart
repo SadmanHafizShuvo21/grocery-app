@@ -1,5 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
 
 class AdminProductsScreen extends StatefulWidget {
   const AdminProductsScreen({super.key});
@@ -13,32 +16,67 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
   final _nameController = TextEditingController();
   final _priceController = TextEditingController();
   final _descriptionController = TextEditingController();
-  final _categoryController = TextEditingController();
+
+  File? _selectedImage;
+  final ImagePicker _picker = ImagePicker();
+  String? _selectedCategory; // dropdown value
 
   @override
   void dispose() {
     _nameController.dispose();
     _priceController.dispose();
     _descriptionController.dispose();
-    _categoryController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickImage() async {
+    final pickedFile = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 70,
+    );
+
+    if (pickedFile != null) {
+      setState(() {
+        _selectedImage = File(pickedFile.path);
+      });
+    }
+  }
+
+  Future<String> _uploadImage(File imageFile) async {
+    final fileName = DateTime.now().millisecondsSinceEpoch.toString();
+    final ref = FirebaseStorage.instance
+        .ref()
+        .child('product_images')
+        .child(fileName);
+
+    await ref.putFile(imageFile);
+    return await ref.getDownloadURL();
   }
 
   Future<void> _addProduct() async {
     if (_formKey.currentState!.validate()) {
+      String imageUrl = 'https://via.placeholder.com/150';
+
+      if (_selectedImage != null) {
+        imageUrl = await _uploadImage(_selectedImage!);
+      }
+
       await FirebaseFirestore.instance.collection('products').add({
         'name': _nameController.text,
         'price': double.parse(_priceController.text),
         'description': _descriptionController.text,
-        'category': _categoryController.text,
-        'imageUrl': 'https://via.placeholder.com/150',
+        'category': _selectedCategory,
+        'imageUrl': imageUrl,
         'createdAt': FieldValue.serverTimestamp(),
       });
 
       _nameController.clear();
       _priceController.clear();
       _descriptionController.clear();
-      _categoryController.clear();
+      setState(() {
+        _selectedImage = null;
+        _selectedCategory = null;
+      });
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Product added successfully!')),
@@ -78,6 +116,36 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                         ),
                       ),
                       const SizedBox(height: 20),
+
+                      // Image Picker
+                      GestureDetector(
+                        onTap: _pickImage,
+                        child: _selectedImage != null
+                            ? ClipRRect(
+                                borderRadius: BorderRadius.circular(10),
+                                child: Image.file(
+                                  _selectedImage!,
+                                  height: 120,
+                                  width: 120,
+                                  fit: BoxFit.cover,
+                                ),
+                              )
+                            : Container(
+                                height: 120,
+                                width: 120,
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: Colors.grey),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Icon(
+                                  Icons.camera_alt,
+                                  size: 40,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                      ),
+                      const SizedBox(height: 15),
+
                       TextFormField(
                         controller: _nameController,
                         decoration: InputDecoration(
@@ -90,6 +158,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                             value!.isEmpty ? 'Enter product name' : null,
                       ),
                       const SizedBox(height: 15),
+
                       TextFormField(
                         controller: _priceController,
                         decoration: InputDecoration(
@@ -103,18 +172,36 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                             value!.isEmpty ? 'Enter price' : null,
                       ),
                       const SizedBox(height: 15),
-                      TextFormField(
-                        controller: _categoryController,
+
+                      // Category Dropdown
+                      DropdownButtonFormField<String>(
+                        value: _selectedCategory,
                         decoration: InputDecoration(
                           labelText: 'Category',
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10),
                           ),
                         ),
+                        items: const [
+                          DropdownMenuItem(
+                              value: 'Fruit', child: Text('Fruit')),
+                          DropdownMenuItem(
+                              value: 'Vegetables', child: Text('Vegetables')),
+                          DropdownMenuItem(
+                              value: 'Dairy', child: Text('Dairy')),
+                          DropdownMenuItem(
+                              value: 'Bakery', child: Text('Bakery')),
+                        ],
+                        onChanged: (value) {
+                          setState(() {
+                            _selectedCategory = value;
+                          });
+                        },
                         validator: (value) =>
-                            value!.isEmpty ? 'Enter category' : null,
+                            value == null ? 'Please select a category' : null,
                       ),
                       const SizedBox(height: 15),
+
                       TextFormField(
                         controller: _descriptionController,
                         decoration: InputDecoration(
@@ -128,6 +215,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                             value!.isEmpty ? 'Enter description' : null,
                       ),
                       const SizedBox(height: 20),
+
                       ElevatedButton(
                         onPressed: _addProduct,
                         style: ElevatedButton.styleFrom(
@@ -146,11 +234,13 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
               ),
             ),
             const SizedBox(height: 20),
+
             // Products List
             Expanded(
               child: StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
                     .collection('products')
+                    .orderBy('createdAt', descending: true)
                     .snapshots(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
@@ -176,7 +266,8 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                             fit: BoxFit.cover,
                           ),
                           title: Text(product['name']),
-                          subtitle: Text('\$${product['price']}'),
+                          subtitle: Text(
+                              '${product['category']} • \$${product['price']}'),
                           trailing: IconButton(
                             icon: const Icon(Icons.delete, color: Colors.red),
                             onPressed: () {
@@ -199,3 +290,4 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
     );
   }
 }
+

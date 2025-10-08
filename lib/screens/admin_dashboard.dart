@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+// Import your section screens
+import 'admin_products.dart';
+import 'admin_orders.dart';
+import 'admin_users.dart';
+import 'admin_analytics.dart';
+
 class AdminDashboard extends StatelessWidget {
   const AdminDashboard({super.key});
 
@@ -42,28 +48,56 @@ class AdminDashboard extends StatelessWidget {
                   'Products',
                   Icons.inventory_2_outlined,
                   Colors.blue,
-                  () => Navigator.pushNamed(context, '/admin-products'),
+                  () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const AdminProductsScreen(),
+                      ),
+                    );
+                  },
                 ),
                 _buildDashboardCard(
                   context,
                   'Orders',
                   Icons.shopping_cart_outlined,
                   Colors.green,
-                  () {},
+                  () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const AdminOrdersScreen(),
+                      ),
+                    );
+                  },
                 ),
                 _buildDashboardCard(
                   context,
                   'Users',
                   Icons.people_outline,
                   Colors.orange,
-                  () {},
+                  () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const AdminUsersScreen(),
+                      ),
+                    );
+                  },
                 ),
                 _buildDashboardCard(
                   context,
                   'Analytics',
                   Icons.analytics_outlined,
                   Colors.purple,
-                  () {},
+                  () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const AdminAnalyticsScreen(),
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
@@ -108,3 +142,4 @@ class AdminDashboard extends StatelessWidget {
     );
   }
 }
+
