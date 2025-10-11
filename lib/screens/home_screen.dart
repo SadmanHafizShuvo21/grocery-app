@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../widgets/category_card.dart';
 import '../widgets/product_card.dart';
+import 'category_products_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -16,39 +17,76 @@ class _HomeScreenState extends State<HomeScreen> {
   final PageController _bannerController = PageController();
   int _currentBanner = 0;
   bool _navigatedToAdmin = false;
+  String? _cachedRole;
+  bool _isRefreshing = false;
 
   final List<Map<String, dynamic>> _banners = [
     {
       'title': 'Fresh Vegetables',
       'subtitle': 'Get 20% OFF on your first order',
-      'color1': Color(0xFF4CAF50),
-      'color2': Color(0xFF8BC34A),
+      'color1': const Color(0xFF4CAF50),
+      'color2': const Color(0xFF8BC34A),
       'image': 'images/logo.jpg',
+      'route': '/categories',
     },
     {
       'title': 'Organic Fruits',
       'subtitle': 'Premium quality organic produce',
-      'color1': Color(0xFFFF9800),
-      'color2': Color(0xFFFFB74D),
-      'image': 'assets/fruits.png',
+      'color1': const Color(0xFFFF9800),
+      'color2': const Color(0xFFFFB74D),
+      'image': 'images/logo.jpg',
+      'route': '/categories',
     },
     {
       'title': 'Dairy Products',
       'subtitle': 'Fresh from local farms',
-      'color1': Color(0xFF2196F3),
-      'color2': Color(0xFF64B5F6),
-      'image': 'assets/dairy.png',
+      'color1': const Color(0xFF2196F3),
+      'color2': const Color(0xFF64B5F6),
+      'image': 'images/logo.jpg',
+      'route': '/categories',
+    },
+    {
+      'title': 'Bakery Products',
+      'subtitle': 'Baked fresh every day!',
+      'color1': const Color(0xFF795548),
+      'color2': const Color(0xFFA1887F),
+      'image': 'images/logo.jpg',
+      'route': '/categories',
     },
   ];
 
-  Future<String?> _getUserRole() async {
+  @override
+  void initState() {
+    super.initState();
+    _loadUserRole();
+    _startBannerTimer();
+  }
+
+  Future<void> _loadUserRole() async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return null;
+    if (user == null) return;
     final doc = await FirebaseFirestore.instance
         .collection('users')
         .doc(user.uid)
         .get();
-    return doc.data()?['role'];
+    final role = doc.data()?['role'];
+    if (mounted) {
+      setState(() => _cachedRole = role);
+    }
+  }
+
+  void _startBannerTimer() {
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) {
+        setState(() => _currentBanner = (_currentBanner + 1) % _banners.length);
+        _bannerController.animateToPage(
+          _currentBanner,
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeInOut,
+        );
+        _startBannerTimer();
+      }
+    });
   }
 
   void _handleNav(int index) {
@@ -67,26 +105,11 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  @override
-  void initState() {
-    super.initState();
-    _startBannerTimer();
-  }
-
-  void _startBannerTimer() {
-    Future.delayed(const Duration(seconds: 3), () {
-      if (mounted) {
-        setState(() {
-          _currentBanner = (_currentBanner + 1) % _banners.length;
-        });
-        _bannerController.animateToPage(
-          _currentBanner,
-          duration: const Duration(milliseconds: 400),
-          curve: Curves.easeInOut,
-        );
-        _startBannerTimer();
-      }
-    });
+  Future<void> _refreshHome() async {
+    setState(() => _isRefreshing = true);
+    await Future.delayed(const Duration(seconds: 1));
+    await _loadUserRole();
+    setState(() => _isRefreshing = false);
   }
 
   @override
@@ -97,108 +120,81 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<String?>(
-      future: _getUserRole(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            backgroundColor: Colors.white,
-            body: Center(
-              child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF4CAF50)),
-              ),
-            ),
-          );
-        }
+    // 👇 Redirect admin users
+    if (_cachedRole == 'Admin' && !_navigatedToAdmin) {
+      _navigatedToAdmin = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Navigator.pushReplacementNamed(context, '/admin-dashboard');
+      });
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
 
-        final role = snapshot.data;
-        if (role == 'Admin' && !_navigatedToAdmin) {
-          _navigatedToAdmin = true;
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            Navigator.pushReplacementNamed(context, '/admin-dashboard');
-          });
-          return const Scaffold(
-            backgroundColor: Colors.white,
-            body: Center(
-              child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF4CAF50)),
-              ),
-            ),
-          );
-        }
-
-        return Scaffold(
-          backgroundColor: Colors.grey.shade50,
-          appBar: AppBar(
-            title: const Text(
-              'FreshGrocer',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: Colors.black,
-              ),
-            ),
-            backgroundColor: Colors.white,
-            elevation: 0,
-            actions: [
-              IconButton(
-                icon: Icon(Icons.search, color: Colors.grey.shade700),
-                onPressed: () => Navigator.pushNamed(context, '/search'),
-              ),
-              IconButton(
-                icon: Icon(
-                  Icons.shopping_cart_outlined,
-                  color: Colors.grey.shade700,
-                ),
-                onPressed: () => Navigator.pushNamed(context, '/cart'),
-              ),
-              const SizedBox(width: 8),
-            ],
+    return Scaffold(
+      backgroundColor: Colors.grey.shade50,
+      appBar: AppBar(
+        title: const Text(
+          'FreshGrocer',
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            color: Colors.black,
           ),
-          body: SafeArea(
-            child: HomeContent(
-              banners: _banners,
-              pageController: _bannerController,
-              currentBanner: _currentBanner,
-            ),
+        ),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: Icon(Icons.search, color: Colors.grey.shade700),
+            onPressed: () => Navigator.pushNamed(context, '/search'),
           ),
-          bottomNavigationBar: _buildBottomNavigationBar(),
-        );
-      },
+          IconButton(
+            icon: Icon(
+              Icons.shopping_cart_outlined,
+              color: Colors.grey.shade700,
+            ),
+            onPressed: () => Navigator.pushNamed(context, '/cart'),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: _refreshHome,
+        child: SafeArea(
+          child: HomeContent(
+            banners: _banners,
+            pageController: _bannerController,
+            currentBanner: _currentBanner,
+          ),
+        ),
+      ),
+      floatingActionButton: _cachedRole == 'Admin'
+          ? FloatingActionButton(
+              backgroundColor: const Color(0xFF4CAF50),
+              onPressed: () => Navigator.pushNamed(context, '/add-product'),
+              child: const Icon(Icons.add),
+            )
+          : null,
+      bottomNavigationBar: _buildBottomNavigationBar(),
     );
   }
 
   Widget _buildBottomNavigationBar() {
-    return Container(
-      decoration: BoxDecoration(
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      child: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: _handleNav,
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: Colors.white,
-        selectedItemColor: const Color(0xFF4CAF50),
-        unselectedItemColor: Colors.grey.shade600,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.category),
-            label: 'Categories',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.shopping_cart),
-            label: 'Cart',
-          ),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
-        ],
-      ),
+    return BottomNavigationBar(
+      currentIndex: _currentIndex,
+      onTap: _handleNav,
+      type: BottomNavigationBarType.fixed,
+      backgroundColor: Colors.white,
+      selectedItemColor: const Color(0xFF4CAF50),
+      unselectedItemColor: Colors.grey.shade600,
+      items: const [
+        BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.category),
+          label: 'Categories',
+        ),
+        BottomNavigationBarItem(icon: Icon(Icons.shopping_cart), label: 'Cart'),
+        BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+      ],
     );
   }
 }
@@ -218,17 +214,20 @@ class HomeContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildWelcomeHeader(),
           const SizedBox(height: 20),
-          _buildBannerCarousel(),
+          _buildBannerCarousel(context),
+          const SizedBox(height: 10),
+          _buildBannerIndicators(),
           const SizedBox(height: 25),
           _buildCategoriesSection(context),
           const SizedBox(height: 25),
-          _buildProductsSection(context),
+          _buildProductsSection(),
         ],
       ),
     );
@@ -239,13 +238,12 @@ class HomeContent extends StatelessWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
         final user = snapshot.data;
-        final userName =
-            user?.displayName ?? user?.email?.split('@')[0] ?? 'Guest';
+        final name = user?.displayName ?? user?.email?.split('@')[0] ?? 'Guest';
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Hello, $userName! 👋',
+              'Hello, $name 👋',
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 4),
@@ -259,7 +257,7 @@ class HomeContent extends StatelessWidget {
     );
   }
 
-  Widget _buildBannerCarousel() {
+  Widget _buildBannerCarousel(BuildContext context) {
     return SizedBox(
       height: 160,
       child: PageView.builder(
@@ -279,17 +277,11 @@ class HomeContent extends StatelessWidget {
             ),
             child: Stack(
               children: [
-                if (banner['image'] != null)
-                  Positioned(
-                    right: 10,
-                    bottom: 10,
-                    child: Image.asset(
-                      banner['image'],
-                      width: 100,
-                      height: 100,
-                      fit: BoxFit.contain,
-                    ),
-                  ),
+                Positioned(
+                  right: 10,
+                  bottom: 10,
+                  child: Image.asset(banner['image'], width: 100, height: 100),
+                ),
                 Padding(
                   padding: const EdgeInsets.all(20),
                   child: Column(
@@ -314,7 +306,7 @@ class HomeContent extends StatelessWidget {
                       const SizedBox(height: 12),
                       ElevatedButton(
                         onPressed: () =>
-                            Navigator.pushNamed(context, '/categories'),
+                            Navigator.pushNamed(context, banner['route']),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.white,
                           foregroundColor: const Color(0xFF4CAF50),
@@ -328,6 +320,26 @@ class HomeContent extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildBannerIndicators() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(
+        banners.length,
+        (index) => Container(
+          margin: const EdgeInsets.all(3),
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: index == currentBanner
+                ? const Color(0xFF4CAF50)
+                : Colors.grey.shade400,
+          ),
+        ),
       ),
     );
   }
@@ -349,29 +361,46 @@ class HomeContent extends StatelessWidget {
               CategoryCard(
                 icon: Icons.apple_outlined,
                 title: 'Fruits',
-                onTap: () {},
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        const CategoryProductsScreen(category: 'Fruits'),
+                  ),
+                ),
               ),
               CategoryCard(
                 icon: Icons.grass_outlined,
                 title: 'Vegetables',
-                onTap: () {},
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        const CategoryProductsScreen(category: 'Vegetables'),
+                  ),
+                ),
               ),
               CategoryCard(
                 icon: Icons.local_drink_outlined,
                 title: 'Dairy',
-                onTap: () {},
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        const CategoryProductsScreen(category: 'Dairy'),
+                  ),
+                ),
               ),
               CategoryCard(
                 icon: Icons.bakery_dining_outlined,
                 title: 'Bakery',
-                onTap: () {},
-              ),
-              CategoryCard(
-                icon: Icons.more_horiz,
-                title: 'More',
-                onTap: () => Navigator.pushNamed(context, '/categories'),
-                color: const Color(0xFF4CAF50),
-                iconColor: Colors.white,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        const CategoryProductsScreen(category: 'Bakery'),
+                  ),
+                ),
               ),
             ],
           ),
@@ -380,49 +409,57 @@ class HomeContent extends StatelessWidget {
     );
   }
 
-  Widget _buildProductsSection(BuildContext context) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('products')
-          .orderBy('createdAt', descending: true)
-          .limit(4)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
+  // 🔥 Fetch products from Firestore
+  Widget _buildProductsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Latest Products',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 10),
+        StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('products')
+              .orderBy('createdAt', descending: true)
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return Center(child: Text('Error: ${snapshot.error}'));
+            }
+            final products = snapshot.data?.docs ?? [];
+            if (products.isEmpty) {
+              return const Center(child: Text('No products available'));
+            }
 
-        if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
-        }
-
-        final products = snapshot.data?.docs ?? [];
-        if (products.isEmpty) {
-          return const Text('No products available');
-        }
-
-        return GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: products.length,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            crossAxisSpacing: 15,
-            mainAxisSpacing: 15,
-            childAspectRatio: 0.75,
-          ),
-          itemBuilder: (context, index) {
-            final product = products[index].data() as Map<String, dynamic>;
-            return ProductCard(
-              name: product['name'] ?? 'Product',
-              price: (product['price'] ?? 0.0).toDouble(),
-              image: product['imageUrl'] ?? 'https://via.placeholder.com/150',
-              category: product['category'] ?? "General",
-              onTap: () {}, // TODO: product detail
+            return GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: products.length,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 15,
+                mainAxisSpacing: 15,
+                childAspectRatio: 0.75,
+              ),
+              itemBuilder: (context, index) {
+                final product = products[index].data() as Map<String, dynamic>;
+                return ProductCard(
+                  name: product['name'] ?? 'Unnamed',
+                  price: (product['price'] ?? 0).toDouble(),
+                  image: product['imageUrl'] ?? '',
+                  category: product['category'] ?? 'General',
+                  onTap: () {},
+                );
+              },
             );
           },
-        );
-      },
+        ),
+      ],
     );
   }
 }
